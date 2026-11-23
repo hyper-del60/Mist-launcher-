@@ -1,4 +1,4 @@
-
+# Mist Launcher: Niagara-style Android launcher.
 # Is ek file mein poora project hai. GitHub repo mein sirf yahi file chahiye:
 #   .github/workflows/build.yml
 # Commit karte hi APK build hota hai aur "Releases" mein seedha .apk milta hai (zip nahi).
@@ -447,4 +447,5 @@ jobs:
           import androidx.compose.ui.graphics.SolidColor
           import androidx.compose.ui.input.pointer.pointerInput
           import androidx.compose.ui.text.TextStyle
-          i
+          import androidx.compose.ui.text.font.FontWeight
+     
