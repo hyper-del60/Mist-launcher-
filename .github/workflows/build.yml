@@ -1,0 +1,450 @@
+
+# Is ek file mein poora project hai. GitHub repo mein sirf yahi file chahiye:
+#   .github/workflows/build.yml
+# Commit karte hi APK build hota hai aur "Releases" mein seedha .apk milta hai (zip nahi).
+
+name: Build Mist Launcher APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create project files
+        run: |
+          set -e
+          cat > "build.gradle.kts" <<'MIST_EOF'
+          plugins {
+              id("com.android.application") version "8.7.3" apply false
+              id("org.jetbrains.kotlin.android") version "2.0.20" apply false
+              id("org.jetbrains.kotlin.plugin.compose") version "2.0.20" apply false
+          }
+          MIST_EOF
+          cat > "gradle.properties" <<'MIST_EOF'
+          org.gradle.jvmargs=-Xmx3g -Dfile.encoding=UTF-8
+          org.gradle.caching=true
+          android.useAndroidX=true
+          android.nonTransitiveRClass=true
+          kotlin.code.style=official
+          MIST_EOF
+          cat > "settings.gradle.kts" <<'MIST_EOF'
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+
+          rootProject.name = "MistLauncher"
+          include(":app")
+          MIST_EOF
+          mkdir -p "app"
+          cat > "app/build.gradle.kts" <<'MIST_EOF'
+          plugins {
+              id("com.android.application")
+              id("org.jetbrains.kotlin.android")
+              id("org.jetbrains.kotlin.plugin.compose")
+          }
+
+          android {
+              namespace = "com.mist.launcher"
+              compileSdk = 35
+
+              defaultConfig {
+                  applicationId = "com.mist.launcher"
+                  minSdk = 26
+                  targetSdk = 35
+                  versionCode = 1
+                  versionName = "1.0"
+              }
+
+              buildTypes {
+                  release {
+                      isMinifyEnabled = false
+                  }
+              }
+
+              compileOptions {
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
+              }
+
+              kotlinOptions {
+                  jvmTarget = "17"
+              }
+
+              buildFeatures {
+                  compose = true
+              }
+          }
+
+          dependencies {
+              implementation(platform("androidx.compose:compose-bom:2024.09.03"))
+              implementation("androidx.core:core-ktx:1.13.1")
+              implementation("androidx.activity:activity-compose:1.9.2")
+              implementation("androidx.compose.ui:ui")
+              implementation("androidx.compose.foundation:foundation")
+              implementation("androidx.compose.animation:animation")
+              implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+          }
+          MIST_EOF
+          mkdir -p "app/src/main"
+          cat > "app/src/main/AndroidManifest.xml" <<'MIST_EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+              <uses-permission android:name="android.permission.EXPAND_STATUS_BAR" />
+              <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
+
+              <queries>
+                  <intent>
+                      <action android:name="android.intent.action.MAIN" />
+                      <category android:name="android.intent.category.LAUNCHER" />
+                  </intent>
+              </queries>
+
+              <application
+                  android:allowBackup="true"
+                  android:icon="@mipmap/ic_launcher"
+                  android:roundIcon="@mipmap/ic_launcher_round"
+                  android:label="@string/app_name"
+                  android:theme="@style/Theme.Mist">
+
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true"
+                      android:launchMode="singleTask"
+                      android:screenOrientation="portrait"
+                      android:stateNotNeeded="true"
+                      android:windowSoftInputMode="adjustResize">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.HOME" />
+                          <category android:name="android.intent.category.DEFAULT" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+              </application>
+
+          </manifest>
+          MIST_EOF
+          mkdir -p "app/src/main/java/com/mist/launcher"
+          cat > "app/src/main/java/com/mist/launcher/ActionSheet.kt" <<'MIST_EOF'
+          package com.mist.launcher
+
+          import androidx.compose.foundation.background
+          import androidx.compose.foundation.clickable
+          import androidx.compose.foundation.interaction.MutableInteractionSource
+          import androidx.compose.foundation.layout.Box
+          import androidx.compose.foundation.layout.Column
+          import androidx.compose.foundation.layout.fillMaxSize
+          import androidx.compose.foundation.layout.fillMaxWidth
+          import androidx.compose.foundation.layout.navigationBarsPadding
+          import androidx.compose.foundation.layout.padding
+          import androidx.compose.foundation.shape.RoundedCornerShape
+          import androidx.compose.foundation.text.BasicText
+          import androidx.compose.runtime.Composable
+          import androidx.compose.runtime.remember
+          import androidx.compose.ui.Alignment
+          import androidx.compose.ui.Modifier
+          import androidx.compose.ui.draw.alpha
+          import androidx.compose.ui.draw.clip
+          import androidx.compose.ui.graphics.Color
+          import androidx.compose.ui.text.TextStyle
+          import androidx.compose.ui.text.font.FontWeight
+          import androidx.compose.ui.text.style.TextOverflow
+          import androidx.compose.ui.unit.dp
+          import androidx.compose.ui.unit.sp
+
+          @Composable
+          fun ActionSheet(
+              app: AppEntry,
+              pinned: Boolean,
+              hidden: Boolean,
+              onPin: () -> Unit,
+              onHide: () -> Unit,
+              onInfo: () -> Unit,
+              onUninstall: () -> Unit,
+              onDismiss: () -> Unit
+          ) {
+              val scrimSource = remember { MutableInteractionSource() }
+              val cardSource = remember { MutableInteractionSource() }
+
+              Box(
+                  Modifier
+                      .fillMaxSize()
+                      .background(Color(0x99000000))
+                      .clickable(interactionSource = scrimSource, indication = null, onClick = onDismiss)
+              ) {
+                  Column(
+                      Modifier
+                          .align(Alignment.BottomCenter)
+                          .navigationBarsPadding()
+                          .padding(16.dp)
+                          .clip(RoundedCornerShape(28.dp))
+                          .background(Color(0xFF1B1E25))
+                          .clickable(interactionSource = cardSource, indication = null, onClick = {})
+                          .padding(vertical = 12.dp)
+                  ) {
+                      BasicText(
+                          text = app.label,
+                          maxLines = 1,
+                          overflow = TextOverflow.Ellipsis,
+                          modifier = Modifier.padding(horizontal = 24.dp, vertical = 10.dp),
+                          style = TextStyle(
+                              color = Color(0x99FFFFFF),
+                              fontSize = 14.sp,
+                              letterSpacing = 1.sp,
+                              fontWeight = FontWeight.Medium
+                          )
+                      )
+                      SheetItem(if (pinned) "Remove from home" else "Pin to home", onPin)
+                      SheetItem(if (hidden) "Unhide" else "Hide", onHide)
+                      SheetItem("App info", onInfo)
+                      SheetItem("Uninstall", onUninstall, danger = true)
+                  }
+              }
+          }
+
+          @Composable
+          private fun SheetItem(label: String, onClick: () -> Unit, danger: Boolean = false) {
+              Pressable(onClick = onClick, modifier = Modifier.fillMaxWidth()) { pressed ->
+                  BasicText(
+                      text = label,
+                      modifier = Modifier
+                          .padding(horizontal = 24.dp, vertical = 14.dp)
+                          .alpha(if (pressed) 0.5f else 1f),
+                      style = TextStyle(
+                          color = if (danger) Color(0xFFFF6B6B) else Color.White,
+                          fontSize = 18.sp,
+                          fontWeight = FontWeight.Normal
+                      )
+                  )
+              }
+          }
+          MIST_EOF
+          mkdir -p "app/src/main/java/com/mist/launcher"
+          cat > "app/src/main/java/com/mist/launcher/Actions.kt" <<'MIST_EOF'
+          package com.mist.launcher
+
+          import android.annotation.SuppressLint
+          import android.content.ComponentName
+          import android.content.Context
+          import android.content.Intent
+          import android.net.Uri
+          import android.provider.Settings
+
+          object Actions {
+
+              fun launch(context: Context, app: AppEntry) {
+                  val intent = Intent(Intent.ACTION_MAIN).apply {
+                      addCategory(Intent.CATEGORY_LAUNCHER)
+                      component = ComponentName(app.packageName, app.activityName)
+                      addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
+                  }
+                  runCatching { context.startActivity(intent) }
+              }
+
+              fun appInfo(context: Context, packageName: String) {
+                  val intent = Intent(
+                      Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                      Uri.fromParts("package", packageName, null)
+                  ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                  runCatching { context.startActivity(intent) }
+              }
+
+              fun uninstall(context: Context, packageName: String) {
+                  val intent = Intent(
+                      Intent.ACTION_DELETE,
+                      Uri.fromParts("package", packageName, null)
+                  ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                  runCatching { context.startActivity(intent) }
+              }
+
+              /** Home pe neeche swipe karne par notification shade khulta hai. */
+              @SuppressLint("WrongConstant")
+              fun expandNotifications(context: Context) {
+                  runCatching {
+                      val service = context.getSystemService("statusbar")
+                      Class.forName("android.app.StatusBarManager")
+                          .getMethod("expandNotificationsPanel")
+                          .invoke(service)
+                  }
+              }
+          }
+          MIST_EOF
+          mkdir -p "app/src/main/java/com/mist/launcher"
+          cat > "app/src/main/java/com/mist/launcher/AlphabetScroller.kt" <<'MIST_EOF'
+          package com.mist.launcher
+
+          import androidx.compose.foundation.gestures.awaitEachGesture
+          import androidx.compose.foundation.gestures.awaitFirstDown
+          import androidx.compose.foundation.gestures.drag
+          import androidx.compose.foundation.layout.Box
+          import androidx.compose.foundation.layout.Column
+          import androidx.compose.foundation.layout.fillMaxWidth
+          import androidx.compose.foundation.layout.offset
+          import androidx.compose.foundation.text.BasicText
+          import androidx.compose.runtime.Composable
+          import androidx.compose.runtime.getValue
+          import androidx.compose.runtime.mutableFloatStateOf
+          import androidx.compose.runtime.mutableIntStateOf
+          import androidx.compose.runtime.remember
+          import androidx.compose.runtime.rememberUpdatedState
+          import androidx.compose.runtime.setValue
+          import androidx.compose.ui.Alignment
+          import androidx.compose.ui.Modifier
+          import androidx.compose.ui.graphics.Color
+          import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+          import androidx.compose.ui.input.pointer.pointerInput
+          import androidx.compose.ui.layout.onSizeChanged
+          import androidx.compose.ui.platform.LocalDensity
+          import androidx.compose.ui.platform.LocalHapticFeedback
+          import androidx.compose.ui.text.TextStyle
+          import androidx.compose.ui.text.font.FontWeight
+          import androidx.compose.ui.unit.IntOffset
+          import androidx.compose.ui.unit.dp
+          import androidx.compose.ui.unit.sp
+          import kotlin.math.abs
+          import kotlin.math.exp
+          import kotlin.math.roundToInt
+
+          /**
+           * Niagara jaisa A-Z scroller: ungli ke paas ke letters left mein "wave" banate hain
+           * aur har naye letter par halka haptic aata hai.
+           */
+          @Composable
+          fun AlphabetScroller(
+              letters: List<Char>,
+              onLetter: (Char) -> Unit,
+              onRelease: () -> Unit,
+              modifier: Modifier = Modifier
+          ) {
+              var heightPx by remember { mutableIntStateOf(0) }
+              var touchY by remember { mutableFloatStateOf(-1f) }
+              val haptic = LocalHapticFeedback.current
+              val maxShift = with(LocalDensity.current) { 46.dp.toPx() }
+              val currentOnLetter by rememberUpdatedState(onLetter)
+              val currentOnRelease by rememberUpdatedState(onRelease)
+
+              Column(
+                  modifier = modifier
+                      .onSizeChanged { heightPx = it.height }
+                      .pointerInput(letters) {
+                          awaitEachGesture {
+                              val down = awaitFirstDown()
+                              var lastIndex = -1
+
+                              fun handle(y: Float) {
+                                  touchY = y.coerceIn(0f, heightPx.toFloat())
+                                  if (letters.isEmpty() || heightPx <= 0) return
+                                  val index = (touchY / heightPx * letters.size).toInt()
+                                      .coerceIn(0, letters.lastIndex)
+                                  if (index != lastIndex) {
+                                      lastIndex = index
+                                      haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                      currentOnLetter(letters[index])
+                                  }
+                              }
+
+                              down.consume()
+                              handle(down.position.y)
+                              drag(down.id) { change ->
+                                  change.consume()
+                                  handle(change.position.y)
+                              }
+                              touchY = -1f
+                              currentOnRelease()
+                          }
+                      }
+              ) {
+                  val itemHeight = if (letters.isEmpty() || heightPx <= 0) 1f else heightPx.toFloat() / letters.size
+
+                  letters.forEachIndexed { index, letter ->
+                      val dist = if (touchY < 0f) 99f else abs(touchY - (index + 0.5f) * itemHeight) / itemHeight
+                      val shift = if (touchY < 0f) 0f else -maxShift * exp(-(dist * dist) / 6f)
+                      val glow = if (touchY < 0f) 0f else exp(-(dist * dist) / 3f)
+
+                      Box(
+                          modifier = Modifier
+                              .weight(1f)
+                              .fillMaxWidth()
+                              .offset { IntOffset(shift.roundToInt(), 0) },
+                          contentAlignment = Alignment.Center
+                      ) {
+                          BasicText(
+                              text = letter.toString(),
+                              style = TextStyle(
+                                  color = Color.White.copy(alpha = 0.5f + 0.5f * glow),
+                                  fontSize = 13.sp,
+                                  fontWeight = FontWeight.Medium
+                              )
+                          )
+                      }
+                  }
+              }
+          }
+          MIST_EOF
+          mkdir -p "app/src/main/java/com/mist/launcher"
+          cat > "app/src/main/java/com/mist/launcher/DrawerScreen.kt" <<'MIST_EOF'
+          package com.mist.launcher
+
+          import androidx.compose.foundation.Image
+          import androidx.compose.foundation.background
+          import androidx.compose.foundation.clickable
+          import androidx.compose.foundation.gestures.detectVerticalDragGestures
+          import androidx.compose.foundation.interaction.MutableInteractionSource
+          import androidx.compose.foundation.layout.Box
+          import androidx.compose.foundation.layout.Column
+          import androidx.compose.foundation.layout.PaddingValues
+          import androidx.compose.foundation.layout.Row
+          import androidx.compose.foundation.layout.Spacer
+          import androidx.compose.foundation.layout.fillMaxHeight
+          import androidx.compose.foundation.layout.fillMaxSize
+          import androidx.compose.foundation.layout.fillMaxWidth
+          import androidx.compose.foundation.layout.imePadding
+          import androidx.compose.foundation.layout.navigationBarsPadding
+          import androidx.compose.foundation.layout.padding
+          import androidx.compose.foundation.layout.size
+          import androidx.compose.foundation.layout.statusBarsPadding
+          import androidx.compose.foundation.layout.width
+          import androidx.compose.foundation.lazy.LazyColumn
+          import androidx.compose.foundation.lazy.items
+          import androidx.compose.foundation.lazy.rememberLazyListState
+          import androidx.compose.foundation.shape.RoundedCornerShape
+          import androidx.compose.foundation.text.BasicText
+          import androidx.compose.foundation.text.BasicTextField
+          import androidx.compose.foundation.text.KeyboardActions
+          import androidx.compose.foundation.text.KeyboardOptions
+          import androidx.compose.runtime.Composable
+          import androidx.compose.runtime.LaunchedEffect
+          import androidx.compose.runtime.getValue
+          import androidx.compose.runtime.mutableStateOf
+          import androidx.compose.runtime.remember
+          import androidx.compose.runtime.rememberCoroutineScope
+          import androidx.compose.runtime.setValue
+          import androidx.compose.ui.Alignment
+          import androidx.compose.ui.Modifier
+          import androidx.compose.ui.draw.alpha
+          import androidx.compose.ui.draw.clip
+          import androidx.compose.ui.graphics.Color
+          import androidx.compose.ui.graphics.SolidColor
+          import androidx.compose.ui.input.pointer.pointerInput
+          import androidx.compose.ui.text.TextStyle
+          i
