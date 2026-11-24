@@ -43,6 +43,22 @@ jobs:
           [ "$ok" = 1 ] || exit 1
           cat p?.txt | tr -d '[:space:]' | base64 -d | tar xJ
 
+      - name: Apply fixes
+        run: |
+          cd app/src/main/java/com/mist/launcher
+          sed -i 's/fun setTheme(/fun chooseTheme(/' LauncherState.kt
+          sed -i 's/fun setShowDots(/fun updateShowDots(/' LauncherState.kt
+          sed -i 's/fun setPlugAndPlay(/fun updatePlugAndPlay(/' LauncherState.kt
+          sed -i 's/fun setUsageLimit(/fun updateUsageLimit(/' LauncherState.kt
+          sed -i 's/state[.]setTheme(/state.chooseTheme(/' SettingsScreen.kt
+          sed -i 's/state[.]setShowDots(/state.updateShowDots(/' SettingsScreen.kt
+          sed -i 's/state[.]setPlugAndPlay(/state.updatePlugAndPlay(/' SettingsScreen.kt
+          sed -i 's/state[.]setUsageLimit(/state.updateUsageLimit(/' SettingsScreen.kt
+          if grep -nE 'set(Theme|ShowDots|PlugAndPlay|UsageLimit)[(]' *.kt; then
+            echo "::error::fix poora lag nahi paya"
+            exit 1
+          fi
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
