@@ -1,6 +1,6 @@
 # Mist Launcher APK builder.
-# Is repo mein ye file (.github/workflows/build.yml), p1.txt ... p5.txt aur u1.txt (update) hone chahiye.
-# u1.txt ya p5.txt commit hote hi APK banna shuru ho jata hai.
+# Is repo mein ye file (.github/workflows/build.yml), p1.txt ... p5.txt, u1.txt aur u2.txt (updates) hone chahiye.
+# u2.txt, u1.txt ya p5.txt commit hote hi APK banna shuru ho jata hai.
 # APK "Releases" mein seedha .apk milti hai (zip nahi).
 
 name: Build Mist Launcher APK
@@ -8,7 +8,7 @@ name: Build Mist Launcher APK
 on:
   workflow_dispatch:
   push:
-    paths: [ 'p5.txt', 'u1.txt', '.github/workflows/build.yml' ]
+    paths: [ 'p5.txt', 'u1.txt', 'u2.txt', '.github/workflows/build.yml' ]
 
 permissions:
   contents: write
@@ -74,6 +74,21 @@ jobs:
           tr -d '[:space:]' < u1.txt | base64 -d | tar xJ
           test -f app/src/main/java/com/mist/launcher/QuickBar.kt
 
+      - name: Apply update u2 (icon styles, lockscreen clock, widgets)
+        run: |
+          if [ ! -f u2.txt ]; then
+            echo "::error::u2.txt nahi mila. Isi naam se file banao (repo ke root mein, u1.txt ke saath) aur uska content paste karo."
+            exit 1
+          fi
+          got=$(tr -d '[:space:]' < u2.txt | sha256sum | cut -d' ' -f1)
+          want=ad715a755221ed0e2c933d0ba6dea0f6a1082bd74780f29fc021c6a118d3a447
+          if [ "$got" != "$want" ]; then
+            echo "::error::u2.txt adhoori ya galat paste hui hai. Is file ko dobara copy karke paste karo."
+            exit 1
+          fi
+          tr -d '[:space:]' < u2.txt | base64 -d | tar xJ
+          test -f app/src/main/java/com/mist/launcher/Widgets.kt
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -110,7 +125,7 @@ jobs:
       - name: Publish APK to Releases
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.2-${{ github.run_number }}
-          name: Mist Launcher v1.2 (build ${{ github.run_number }})
+          tag_name: v1.3-${{ github.run_number }}
+          name: Mist Launcher v1.3 (build ${{ github.run_number }})
           files: MistLauncher.apk
           
