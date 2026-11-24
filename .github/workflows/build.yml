@@ -1,6 +1,6 @@
 # Mist Launcher APK builder.
-# Is repo mein ye file (.github/workflows/build.yml) aur p1.txt ... p5.txt hone chahiye.
-# Sabse aakhri file p5.txt commit hote hi APK banna shuru ho jata hai.
+# Is repo mein ye file (.github/workflows/build.yml), p1.txt ... p5.txt aur u1.txt (update) hone chahiye.
+# u1.txt ya p5.txt commit hote hi APK banna shuru ho jata hai.
 # APK "Releases" mein seedha .apk milti hai (zip nahi).
 
 name: Build Mist Launcher APK
@@ -8,7 +8,7 @@ name: Build Mist Launcher APK
 on:
   workflow_dispatch:
   push:
-    paths: [ 'p5.txt' ]
+    paths: [ 'p5.txt', 'u1.txt', '.github/workflows/build.yml' ]
 
 permissions:
   contents: write
@@ -59,6 +59,21 @@ jobs:
             exit 1
           fi
 
+      - name: Apply update u1 (quick bar, big letter popup, torch)
+        run: |
+          if [ ! -f u1.txt ]; then
+            echo "::error::u1.txt nahi mila. Isi naam se file banao (repo ke root mein, p1.txt ke saath) aur uska content paste karo."
+            exit 1
+          fi
+          got=$(tr -d '[:space:]' < u1.txt | sha256sum | cut -d' ' -f1)
+          want=c2e8fa587bdc2d3709d7bb0fc58079938700b50e8c4a0a84bc2a94b1a0cf39d0
+          if [ "$got" != "$want" ]; then
+            echo "::error::u1.txt adhoori ya galat paste hui hai. Is file ko dobara copy karke paste karo."
+            exit 1
+          fi
+          tr -d '[:space:]' < u1.txt | base64 -d | tar xJ
+          test -f app/src/main/java/com/mist/launcher/QuickBar.kt
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -95,7 +110,7 @@ jobs:
       - name: Publish APK to Releases
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.1-${{ github.run_number }}
-          name: Mist Launcher v1.1 (build ${{ github.run_number }})
+          tag_name: v1.2-${{ github.run_number }}
+          name: Mist Launcher v1.2 (build ${{ github.run_number }})
           files: MistLauncher.apk
           
