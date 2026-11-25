@@ -8,7 +8,7 @@ name: Build Mist Launcher APK
 on:
   workflow_dispatch:
   push:
-    paths: [ 'p5.txt', 'u1.txt', 'u2.txt', 'u3d.txt', '.github/workflows/build.yml' ]
+    paths: [ 'p5.txt', 'u1.txt', 'u2.txt', 'u3d.txt', 'u5b.txt', '.github/workflows/build.yml' ]
 
 permissions:
   contents: write
@@ -334,6 +334,30 @@ jobs:
           print('u4 patch OK')
           PY
 
+      - name: Apply update u5 (top-edge swipe, tile toggles via Accessibility)
+        run: |
+          ok=1
+          while read -r f want; do
+            if [ ! -f "$f" ]; then
+              echo "::error::$f nahi mila. Isi naam se file banao (repo ke root mein, u2.txt ke saath) aur uska content paste karo."
+              ok=0
+              continue
+            fi
+            got=$(tr -d '[:space:]' < "$f" | sha256sum | cut -d' ' -f1)
+            if [ "$got" != "$want" ]; then
+              echo "::error::$f adhoori ya galat paste hui hai. Sirf is file ko dobara copy karke paste karo."
+              ok=0
+            fi
+          done <<'LIST'
+          u5a.txt 62fc55649830d76a4051c03478f39e404eec99b8e154d79a115a17ce673e3cfb
+          u5b.txt 57246bfa1c0a6e3726fa2517991c4b1e8633ab4103a2debfb43b19432f71010a
+          LIST
+          [ "$ok" = 1 ] || exit 1
+          cat u5?.txt | tr -d '[:space:]' | base64 -d | tar xJ
+          test -f patch_u5.py
+          python3 patch_u5.py
+          sed -i 's/versionCode = 4/versionCode = 5/; s/versionName = "1.4"/versionName = "1.5"/' app/build.gradle.kts
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -370,7 +394,7 @@ jobs:
       - name: Publish APK to Releases
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.4-${{ github.run_number }}
-          name: Mist Launcher v1.4 (build ${{ github.run_number }})
+          tag_name: v1.5-${{ github.run_number }}
+          name: Mist Launcher v1.5 (build ${{ github.run_number }})
           files: MistLauncher.apk
           
