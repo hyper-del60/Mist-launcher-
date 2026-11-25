@@ -148,6 +148,192 @@ jobs:
           PY
           sed -i 's/versionCode = 2/versionCode = 4/; s/versionName = "1.1"/versionName = "1.4"/' app/build.gradle.kts
 
+      - name: Apply update u4 (direct Wi-Fi/Bluetooth toggle, swipe anywhere, handle)
+        run: |
+          python3 - <<'PY'
+          import os, re, sys
+
+          KT = 'app/src/main/java/com/mist/launcher/'
+
+          def read(fn):
+              return open(KT + fn, encoding='utf-8').read()
+
+          def write(fn, s):
+              open(KT + fn, 'w', encoding='utf-8').write(s)
+
+          def sub(s, old, new, fn):
+              if s.count(old) != 1:
+                  raise SystemExit('::error::u4 patch: %s mein ye jagah nahi mili (%d baar): %s' % (fn, s.count(old), old.strip()[:60]))
+              return s.replace(old, new)
+
+          # ---------------------------------------------------------------- Extras.kt
+          s = read('Extras.kt')
+          if 'controlZone' not in s:
+              s = sub(s, '    var controlPanel by mutableStateOf(true)\n        private set\n',
+                  '''    var controlPanel by mutableStateOf(true)
+                  private set
+
+              /** 0 = sirf right half se neeche swipe, 1 = home pe kahin se bhi neeche swipe = control panel. */
+              var controlZone by mutableIntStateOf(1)
+                  private set
+
+              /** Top-right ke neeche chhota handle: tap ya neeche kheencho = control panel. */
+              var controlHandle by mutableStateOf(true)
+                  private set
+          ''', 'Extras.kt')
+              s = sub(s, '        controlPanel = p.getBoolean(KEY_CONTROL, true)\n',
+                  '''        controlPanel = p.getBoolean(KEY_CONTROL, true)
+                  controlZone = p.getInt(KEY_ZONE, 1).coerceIn(0, 1)
+                  controlHandle = p.getBoolean(KEY_HANDLE, true)
+          ''', 'Extras.kt')
+              s = sub(s, '    fun updateControlPanel(value: Boolean) {',
+                  '''    fun updateControlZone(value: Int) {
+                  controlZone = value.coerceIn(0, 1)
+                  prefs?.edit()?.putInt(KEY_ZONE, controlZone)?.apply()
+              }
+
+              fun updateControlHandle(value: Boolean) {
+                  controlHandle = value
+                  prefs?.edit()?.putBoolean(KEY_HANDLE, value)?.apply()
+              }
+
+              fun updateControlPanel(value: Boolean) {''', 'Extras.kt')
+              s = sub(s, '    private const val KEY_CONTROL = "control_panel"\n',
+                  '    private const val KEY_CONTROL = "control_panel"\n    private const val KEY_ZONE = "control_zone"\n    private const val KEY_HANDLE = "control_handle"\n', 'Extras.kt')
+              write('Extras.kt', s)
+
+          # ---------------------------------------------------------------- HomeScreen.kt
+          s = read('HomeScreen.kt')
+          if 'ControlHandle' not in s:
+              s = sub(s, 'if (Extras.controlPanel && startX > size.width * 0.5f) {',
+                  'if (Extras.controlPanel && (Extras.controlZone == 1 || startX > size.width * 0.5f)) {', 'HomeScreen.kt')
+              s = sub(s, '        HomeContent(state = state, onLaunch = onLaunch)\n',
+                  '''        HomeContent(state = state, onLaunch = onLaunch)
+
+                  // Chhota handle (top right ke neeche): tap ya neeche kheencho = control panel.
+                  if (Extras.controlPanel && Extras.controlHandle) {
+                      ControlHandle(Modifier.align(Alignment.TopEnd))
+                  }
+          ''', 'HomeScreen.kt')
+              write('HomeScreen.kt', s)
+
+          # ---------------------------------------------------------------- SettingsScreen.kt
+          s = read('SettingsScreen.kt')
+          if 'controlZone' not in s:
+              s = sub(s, '        ToggleRow("Control panel gesture", Extras.controlPanel) { Extras.updateControlPanel(it) }\n',
+                  '''        ToggleRow("Control panel gesture", Extras.controlPanel) { Extras.updateControlPanel(it) }
+                  Hint("Swipe area: Right half = only from the right side, Anywhere = swipe down from anywhere on the home screen (the notification shade is then reached from the status bar).")
+                  ChipRow(listOf("Right half", "Anywhere"), Extras.controlZone) { Extras.updateControlZone(it) }
+                  ToggleRow("Small handle (top right)", Extras.controlHandle) { Extras.updateControlHandle(it) }
+          ''', 'SettingsScreen.kt')
+              write('SettingsScreen.kt', s)
+
+          # ---------------------------------------------------------------- ControlPanel.kt
+          s = read('ControlPanel.kt')
+          if 'fun ControlHandle' not in s:
+              start = s.find('@Suppress("DEPRECATION")\nprivate fun ccWifi(context: Context) {')
+              end = s.find('private fun ccMobileData(context: Context) {')
+              if start < 0 or end < 0 or end < start:
+                  raise SystemExit('::error::u4 patch: ControlPanel.kt mein ccWifi nahi mila')
+              new_fns = '''/**
+           * Wi-Fi: pehle seedha on/off try karta hai. Android sirf purane targetSdk wali app ko ye karne deta hai;
+           * agar system mana kare (false) to Android 10+ ka Wi-Fi panel / settings khulta hai.
+           */
+          @Suppress("DEPRECATION")
+          private fun ccWifi(context: Context) {
+              val direct = try {
+                  val wm = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+                  wm.setWifiEnabled(!wm.isWifiEnabled)
+              } catch (e: Exception) {
+                  false
+              }
+              if (direct) return
+              if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && ccLaunch(context, PANEL_WIFI)) return
+              ccOpenSettings(context, Settings.ACTION_WIFI_SETTINGS)
+          }
+
+          /** Bluetooth: seedha enable/disable try; system mana kare to Bluetooth settings. */
+          @Suppress("DEPRECATION", "MissingPermission")
+          private fun ccBluetooth(context: Context) {
+              val done = try {
+                  val adapter = (context.applicationContext.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager).adapter
+                  if (adapter == null) {
+                      false
+                  } else if (adapter.isEnabled) {
+                      adapter.disable()
+                  } else {
+                      adapter.enable()
+                  }
+              } catch (e: Exception) {
+                  false
+              }
+              if (!done) ccOpenSettings(context, Settings.ACTION_BLUETOOTH_SETTINGS)
+          }
+
+          '''
+              s = s[:start] + new_fns + s[end:]
+              s = sub(s, '''                        modifier = Modifier.fillMaxWidth().weight(1f),
+                                  onClick = { ccOpenSettings(context, Settings.ACTION_BLUETOOTH_SETTINGS) }''',
+                  '''                        modifier = Modifier.fillMaxWidth().weight(1f),
+                                  onLongClick = { ccOpenSettings(context, Settings.ACTION_BLUETOOTH_SETTINGS) },
+                                  onClick = { ccBluetooth(context) }''', 'ControlPanel.kt')
+              s = s.rstrip('\n') + '''
+
+          // ---------------------------------------------------------------- handle (home ke top-right ke neeche)
+
+          /** Chhota handle: tap ya neeche kheencho = control panel. */
+          @Composable
+          fun ControlHandle(modifier: Modifier = Modifier) {
+              Box(
+                  modifier = modifier
+                      .statusBarsPadding()
+                      .padding(top = 2.dp, end = 6.dp)
+                      .size(width = 76.dp, height = 40.dp)
+                      .pointerInput(Unit) {
+                          detectTapGestures(onTap = { ControlCenter.show() })
+                      }
+                      .pointerInput(Unit) {
+                          var total = 0f
+                          val threshold = 24.dp.toPx()
+                          detectVerticalDragGestures(
+                              onDragStart = { total = 0f },
+                              onDragEnd = { if (total > threshold) ControlCenter.show() },
+                              onVerticalDrag = { _, dy -> total += dy }
+                          )
+                      },
+                  contentAlignment = Alignment.Center
+              ) {
+                  Box(
+                      Modifier
+                          .size(width = 36.dp, height = 5.dp)
+                          .clip(CcPill)
+                          .background(Color.White.copy(alpha = 0.35f))
+                  )
+              }
+          }
+          '''
+              write('ControlPanel.kt', s)
+
+          # ---------------------------------------------------------------- manifest + gradle
+          m = 'app/src/main/AndroidManifest.xml'
+          t = open(m, encoding='utf-8').read()
+          t = t.replace('<uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />',
+                        '<uses-permission android:name="android.permission.BLUETOOTH" />')
+          if 'BLUETOOTH_ADMIN' not in t:
+              anchor = '    <uses-permission android:name="android.permission.BLUETOOTH" />\n'
+              if anchor in t:
+                  t = t.replace(anchor, anchor + '    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />\n', 1)
+              else:
+                  raise SystemExit('::error::u4 patch: manifest mein BLUETOOTH line nahi mili')
+          open(m, 'w', encoding='utf-8').write(t)
+
+          g = 'app/build.gradle.kts'
+          t = open(g, encoding='utf-8').read()
+          t = re.sub(r'targetSdk = \d+', 'targetSdk = 28', t, count=1)
+          open(g, 'w', encoding='utf-8').write(t)
+          print('u4 patch OK')
+          PY
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
