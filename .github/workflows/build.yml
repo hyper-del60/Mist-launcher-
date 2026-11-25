@@ -1,6 +1,6 @@
 # Mist Launcher APK builder.
-# Is repo mein ye file (.github/workflows/build.yml), p1.txt ... p5.txt, u1.txt, u2.txt aur u3.txt (updates) hone chahiye.
-# u3.txt, u2.txt, u1.txt ya p5.txt commit hote hi APK banna shuru ho jata hai.
+# Is repo mein ye file (.github/workflows/build.yml), p1.txt ... p5.txt, u1.txt, u2.txt aur u3a.txt ... u3d.txt (updates) hone chahiye.
+# u3d.txt, u2.txt, u1.txt ya p5.txt commit hote hi APK banna shuru ho jata hai.
 # APK "Releases" mein seedha .apk milti hai (zip nahi).
 
 name: Build Mist Launcher APK
@@ -8,7 +8,7 @@ name: Build Mist Launcher APK
 on:
   workflow_dispatch:
   push:
-    paths: [ 'p5.txt', 'u1.txt', 'u2.txt', 'u3.txt', '.github/workflows/build.yml' ]
+    paths: [ 'p5.txt', 'u1.txt', 'u2.txt', 'u3d.txt', '.github/workflows/build.yml' ]
 
 permissions:
   contents: write
@@ -91,17 +91,26 @@ jobs:
 
       - name: Apply update u3 (control panel, colour icons)
         run: |
-          if [ ! -f u3.txt ]; then
-            echo "::error::u3.txt nahi mila. Isi naam se file banao (repo ke root mein, u2.txt ke saath) aur uska content paste karo."
-            exit 1
-          fi
-          got=$(tr -d '[:space:]' < u3.txt | sha256sum | cut -d' ' -f1)
-          want=456100d4aa3a215ab75cb9162852cd74c23788009bd357a237670a4bc5985c23
-          if [ "$got" != "$want" ]; then
-            echo "::error::u3.txt adhoori ya galat paste hui hai. Is file ko dobara copy karke paste karo."
-            exit 1
-          fi
-          tr -d '[:space:]' < u3.txt | base64 -d | tar xJ
+          ok=1
+          while read -r f want; do
+            if [ ! -f "$f" ]; then
+              echo "::error::$f nahi mila. Isi naam se file banao (repo ke root mein, u2.txt ke saath) aur uska content paste karo."
+              ok=0
+              continue
+            fi
+            got=$(tr -d '[:space:]' < "$f" | sha256sum | cut -d' ' -f1)
+            if [ "$got" != "$want" ]; then
+              echo "::error::$f adhoori ya galat paste hui hai. Sirf is file ko dobara copy karke paste karo."
+              ok=0
+            fi
+          done <<'LIST'
+          u3a.txt b9b3476c2d301217d5195c77612d58fec2ef168e129f43e196e7583d970f6cbb
+          u3b.txt 4d245bcc09aa32d6c70689352a323557a65aafffed65b45215185148b0006ce4
+          u3c.txt c96ce844d7f9781ce259f328520f5abef44ce95fff914537f6018615708c3e12
+          u3d.txt eab8cda733fc4f2350f69c248f70bcb8a8d697d0b71930be19d1d6e3f05b5c8b
+          LIST
+          [ "$ok" = 1 ] || exit 1
+          cat u3?.txt | tr -d '[:space:]' | base64 -d | tar xJ
           test -f app/src/main/java/com/mist/launcher/ControlPanel.kt
           test -f app/src/main/java/com/mist/launcher/IconColour.kt
           # Chhote add-on patches: purani files replace nahi hoti, bas ek-do line judti hain.
