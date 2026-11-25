@@ -113,6 +113,9 @@ jobs:
           cat u3?.txt | tr -d '[:space:]' | base64 -d | tar xJ
           test -f app/src/main/java/com/mist/launcher/ControlPanel.kt
           test -f app/src/main/java/com/mist/launcher/IconColour.kt
+          # Fix: ControlPanel.kt mein ek function ka naam (drawGlyph -> ccDrawGlyph) poora nahi badla tha.
+          sed -i 's/DrawScope[.]drawGlyph(/DrawScope.ccDrawGlyph(/' app/src/main/java/com/mist/launcher/ControlPanel.kt
+          grep -q 'fun DrawScope.ccDrawGlyph(' app/src/main/java/com/mist/launcher/ControlPanel.kt
           # Chhote add-on patches: purani files replace nahi hoti, bas ek-do line judti hain.
           python3 - <<'PY'
           manifest = 'app/src/main/AndroidManifest.xml'
