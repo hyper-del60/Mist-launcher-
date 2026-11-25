@@ -1,6 +1,6 @@
 # Mist Launcher APK builder.
-# Is repo mein ye file (.github/workflows/build.yml), p1.txt ... p5.txt, u1.txt aur u2.txt (updates) hone chahiye.
-# u2.txt, u1.txt ya p5.txt commit hote hi APK banna shuru ho jata hai.
+# Is repo mein ye file (.github/workflows/build.yml), p1.txt ... p5.txt, u1.txt, u2.txt aur u3.txt (updates) hone chahiye.
+# u3.txt, u2.txt, u1.txt ya p5.txt commit hote hi APK banna shuru ho jata hai.
 # APK "Releases" mein seedha .apk milti hai (zip nahi).
 
 name: Build Mist Launcher APK
@@ -8,7 +8,7 @@ name: Build Mist Launcher APK
 on:
   workflow_dispatch:
   push:
-    paths: [ 'p5.txt', 'u1.txt', 'u2.txt', '.github/workflows/build.yml' ]
+    paths: [ 'p5.txt', 'u1.txt', 'u2.txt', 'u3.txt', '.github/workflows/build.yml' ]
 
 permissions:
   contents: write
@@ -89,6 +89,53 @@ jobs:
           tr -d '[:space:]' < u2.txt | base64 -d | tar xJ
           test -f app/src/main/java/com/mist/launcher/Widgets.kt
 
+      - name: Apply update u3 (control panel, colour icons)
+        run: |
+          if [ ! -f u3.txt ]; then
+            echo "::error::u3.txt nahi mila. Isi naam se file banao (repo ke root mein, u2.txt ke saath) aur uska content paste karo."
+            exit 1
+          fi
+          got=$(tr -d '[:space:]' < u3.txt | sha256sum | cut -d' ' -f1)
+          want=456100d4aa3a215ab75cb9162852cd74c23788009bd357a237670a4bc5985c23
+          if [ "$got" != "$want" ]; then
+            echo "::error::u3.txt adhoori ya galat paste hui hai. Is file ko dobara copy karke paste karo."
+            exit 1
+          fi
+          tr -d '[:space:]' < u3.txt | base64 -d | tar xJ
+          test -f app/src/main/java/com/mist/launcher/ControlPanel.kt
+          test -f app/src/main/java/com/mist/launcher/IconColour.kt
+          # Chhote add-on patches: purani files replace nahi hoti, bas ek-do line judti hain.
+          python3 - <<'PY'
+          manifest = 'app/src/main/AndroidManifest.xml'
+          s = open(manifest, encoding='utf-8').read()
+          if 'ACCESS_NETWORK_STATE' not in s:
+              anchor = '    <uses-permission android:name="android.permission.EXPAND_STATUS_BAR" />\n'
+              add = (
+                  '    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />\n'
+                  '    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />\n'
+                  '    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />\n'
+                  '    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />\n'
+                  '    <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />\n'
+                  '    <uses-permission\n'
+                  '        android:name="android.permission.WRITE_SETTINGS"\n'
+                  '        tools:ignore="ProtectedPermissions" />\n'
+              )
+              if anchor not in s:
+                  raise SystemExit('::error::AndroidManifest.xml mein anchor line nahi mili')
+              open(manifest, 'w', encoding='utf-8').write(s.replace(anchor, anchor + add, 1))
+
+          main = 'app/src/main/java/com/mist/launcher/MainActivity.kt'
+          m = open(main, encoding='utf-8').read()
+          if 'ControlCenter.close()' not in m:
+              import re
+              m2, n = re.subn(r'(\n([ \t]*)state\.closeAll\(\)[ \t]*\n)', lambda g: g.group(1) + g.group(2) + 'ControlCenter.close()\n', m, count=1)
+              if n == 1:
+                  open(main, 'w', encoding='utf-8').write(m2)
+              else:
+                  print('::warning::MainActivity mein closeAll() nahi mila: Home dabane par control panel band nahi hoga')
+          PY
+          sed -i 's/versionCode = 2/versionCode = 4/; s/versionName = "1.1"/versionName = "1.4"/' app/build.gradle.kts
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -125,7 +172,7 @@ jobs:
       - name: Publish APK to Releases
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.3-${{ github.run_number }}
-          name: Mist Launcher v1.3 (build ${{ github.run_number }})
+          tag_name: v1.4-${{ github.run_number }}
+          name: Mist Launcher v1.4 (build ${{ github.run_number }})
           files: MistLauncher.apk
           
