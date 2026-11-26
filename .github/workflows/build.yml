@@ -1,6 +1,10 @@
 # Mist Launcher APK builder.
-# Is repo mein ye file (.github/workflows/build.yml), p1.txt ... p5.txt, u1.txt, u2.txt aur u3a.txt ... u3d.txt (updates) hone chahiye.
-# u3d.txt, u2.txt, u1.txt ya p5.txt commit hote hi APK banna shuru ho jata hai.
+# Repo mein ye file (.github/workflows/build.yml), c1.txt, c2.txt, p1.txt ... p5.txt, u1.txt, u2.txt,
+# u3a.txt ... u3d.txt, u5a.txt, u5b.txt, u6a.txt aur u6b.txt hone chahiye.
+# Saari patch logic c1.txt + c2.txt ke andar hai (hash se check hoti hai), isliye ye file chhoti rehti hai.
+# Naya update (u7, u8 ...): uNa.txt, uNb.txt ... pehle commit karo, phir hashes.txt mein unki "uNa.txt <hash>" lines
+# jodo (hashes.txt aakhir mein commit karo). Is file ko dobara badalna nahi padta.
+# c2.txt, hashes.txt, u3d.txt, u2.txt, u1.txt, p5.txt, u5b.txt ya u6b.txt commit hote hi APK banna shuru ho jata hai.
 # APK "Releases" mein seedha .apk milti hai (zip nahi).
 
 name: Build Mist Launcher APK
@@ -8,7 +12,7 @@ name: Build Mist Launcher APK
 on:
   workflow_dispatch:
   push:
-    paths: [ 'p5.txt', 'u1.txt', 'u2.txt', 'u3d.txt', 'u5b.txt', '.github/workflows/build.yml' ]
+    paths: [ 'p5.txt', 'u1.txt', 'u2.txt', 'u3d.txt', 'u5b.txt', 'u6b.txt', 'c2.txt', 'hashes.txt', '.github/workflows/build.yml' ]
 
 permissions:
   contents: write
@@ -19,82 +23,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Check parts and unpack project
+      - name: Unpack parts and apply patches (c1 + c2 -> ci.sh)
         run: |
           ok=1
           while read -r f want; do
             if [ ! -f "$f" ]; then
-              echo "::error::$f nahi mila. Isi naam se file banao aur uska content paste karo."
-              ok=0
-              continue
-            fi
-            got=$(tr -d '[:space:]' < "$f" | sha256sum | cut -d' ' -f1)
-            if [ "$got" != "$want" ]; then
-              echo "::error::$f adhoori ya galat paste hui hai. Is file ko dobara copy karke paste karo."
-              ok=0
-            fi
-          done <<'LIST'
-          p1.txt 26197bafdc403e2571116dcb7bd22e04b831ee04ed875c457f7532e887efa3bb
-          p2.txt dc563a44f518b50b36e096b9126a91651974bd0097b9be7df2bb4ec551fa71f0
-          p3.txt f40a0819cd29d9fd7623d2d5fa519967d579cc9fe3e735839e9a1d68015392b4
-          p4.txt 121d3dff84c95adeaefac180b39822ee024a4b396a31fad9c9d1ce0163c3781d
-          p5.txt b34827394ab6ae1d89d603ea131783cc98edf6f34b71114fcf2ebe6401cee74c
-          LIST
-          [ "$ok" = 1 ] || exit 1
-          cat p?.txt | tr -d '[:space:]' | base64 -d | tar xJ
-
-      - name: Apply fixes
-        run: |
-          cd app/src/main/java/com/mist/launcher
-          sed -i 's/fun setTheme(/fun chooseTheme(/' LauncherState.kt
-          sed -i 's/fun setShowDots(/fun updateShowDots(/' LauncherState.kt
-          sed -i 's/fun setPlugAndPlay(/fun updatePlugAndPlay(/' LauncherState.kt
-          sed -i 's/fun setUsageLimit(/fun updateUsageLimit(/' LauncherState.kt
-          sed -i 's/state[.]setTheme(/state.chooseTheme(/' SettingsScreen.kt
-          sed -i 's/state[.]setShowDots(/state.updateShowDots(/' SettingsScreen.kt
-          sed -i 's/state[.]setPlugAndPlay(/state.updatePlugAndPlay(/' SettingsScreen.kt
-          sed -i 's/state[.]setUsageLimit(/state.updateUsageLimit(/' SettingsScreen.kt
-          if grep -nE 'set(Theme|ShowDots|PlugAndPlay|UsageLimit)[(]' *.kt; then
-            echo "::error::fix poora lag nahi paya"
-            exit 1
-          fi
-
-      - name: Apply update u1 (quick bar, big letter popup, torch)
-        run: |
-          if [ ! -f u1.txt ]; then
-            echo "::error::u1.txt nahi mila. Isi naam se file banao (repo ke root mein, p1.txt ke saath) aur uska content paste karo."
-            exit 1
-          fi
-          got=$(tr -d '[:space:]' < u1.txt | sha256sum | cut -d' ' -f1)
-          want=c2e8fa587bdc2d3709d7bb0fc58079938700b50e8c4a0a84bc2a94b1a0cf39d0
-          if [ "$got" != "$want" ]; then
-            echo "::error::u1.txt adhoori ya galat paste hui hai. Is file ko dobara copy karke paste karo."
-            exit 1
-          fi
-          tr -d '[:space:]' < u1.txt | base64 -d | tar xJ
-          test -f app/src/main/java/com/mist/launcher/QuickBar.kt
-
-      - name: Apply update u2 (icon styles, lockscreen clock, widgets)
-        run: |
-          if [ ! -f u2.txt ]; then
-            echo "::error::u2.txt nahi mila. Isi naam se file banao (repo ke root mein, u1.txt ke saath) aur uska content paste karo."
-            exit 1
-          fi
-          got=$(tr -d '[:space:]' < u2.txt | sha256sum | cut -d' ' -f1)
-          want=ad715a755221ed0e2c933d0ba6dea0f6a1082bd74780f29fc021c6a118d3a447
-          if [ "$got" != "$want" ]; then
-            echo "::error::u2.txt adhoori ya galat paste hui hai. Is file ko dobara copy karke paste karo."
-            exit 1
-          fi
-          tr -d '[:space:]' < u2.txt | base64 -d | tar xJ
-          test -f app/src/main/java/com/mist/launcher/Widgets.kt
-
-      - name: Apply update u3 (control panel, colour icons)
-        run: |
-          ok=1
-          while read -r f want; do
-            if [ ! -f "$f" ]; then
-              echo "::error::$f nahi mila. Isi naam se file banao (repo ke root mein, u2.txt ke saath) aur uska content paste karo."
+              echo "::error::$f nahi mila. Isi naam se file banao (repo ke root mein) aur uska content paste karo."
               ok=0
               continue
             fi
@@ -104,259 +38,12 @@ jobs:
               ok=0
             fi
           done <<'LIST'
-          u3a.txt b9b3476c2d301217d5195c77612d58fec2ef168e129f43e196e7583d970f6cbb
-          u3b.txt 4d245bcc09aa32d6c70689352a323557a65aafffed65b45215185148b0006ce4
-          u3c.txt c96ce844d7f9781ce259f328520f5abef44ce95fff914537f6018615708c3e12
-          u3d.txt eab8cda733fc4f2350f69c248f70bcb8a8d697d0b71930be19d1d6e3f05b5c8b
+          c1.txt a4210e7af10752946885a8bb7d160fd2316e8ece943ccc7f9bcf802be3212d2a
+          c2.txt ead3db441ecf3001eca53990f376a73db369e6d2323027116e9a4af30b18cb78
           LIST
           [ "$ok" = 1 ] || exit 1
-          cat u3?.txt | tr -d '[:space:]' | base64 -d | tar xJ
-          test -f app/src/main/java/com/mist/launcher/ControlPanel.kt
-          test -f app/src/main/java/com/mist/launcher/IconColour.kt
-          # Fix: ControlPanel.kt mein ek function ka naam (drawGlyph -> ccDrawGlyph) poora nahi badla tha.
-          sed -i 's/DrawScope[.]drawGlyph(/DrawScope.ccDrawGlyph(/' app/src/main/java/com/mist/launcher/ControlPanel.kt
-          grep -q 'fun DrawScope.ccDrawGlyph(' app/src/main/java/com/mist/launcher/ControlPanel.kt
-          # Chhote add-on patches: purani files replace nahi hoti, bas ek-do line judti hain.
-          python3 - <<'PY'
-          manifest = 'app/src/main/AndroidManifest.xml'
-          s = open(manifest, encoding='utf-8').read()
-          if 'ACCESS_NETWORK_STATE' not in s:
-              anchor = '    <uses-permission android:name="android.permission.EXPAND_STATUS_BAR" />\n'
-              add = (
-                  '    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />\n'
-                  '    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />\n'
-                  '    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />\n'
-                  '    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />\n'
-                  '    <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />\n'
-                  '    <uses-permission\n'
-                  '        android:name="android.permission.WRITE_SETTINGS"\n'
-                  '        tools:ignore="ProtectedPermissions" />\n'
-              )
-              if anchor not in s:
-                  raise SystemExit('::error::AndroidManifest.xml mein anchor line nahi mili')
-              open(manifest, 'w', encoding='utf-8').write(s.replace(anchor, anchor + add, 1))
-
-          main = 'app/src/main/java/com/mist/launcher/MainActivity.kt'
-          m = open(main, encoding='utf-8').read()
-          if 'ControlCenter.close()' not in m:
-              import re
-              m2, n = re.subn(r'(\n([ \t]*)state\.closeAll\(\)[ \t]*\n)', lambda g: g.group(1) + g.group(2) + 'ControlCenter.close()\n', m, count=1)
-              if n == 1:
-                  open(main, 'w', encoding='utf-8').write(m2)
-              else:
-                  print('::warning::MainActivity mein closeAll() nahi mila: Home dabane par control panel band nahi hoga')
-          PY
-          sed -i 's/versionCode = 2/versionCode = 4/; s/versionName = "1.1"/versionName = "1.4"/' app/build.gradle.kts
-
-      - name: Apply update u4 (direct Wi-Fi/Bluetooth toggle, swipe anywhere, handle)
-        run: |
-          python3 - <<'PY'
-          import os, re, sys
-
-          KT = 'app/src/main/java/com/mist/launcher/'
-
-          def read(fn):
-              return open(KT + fn, encoding='utf-8').read()
-
-          def write(fn, s):
-              open(KT + fn, 'w', encoding='utf-8').write(s)
-
-          def sub(s, old, new, fn):
-              if s.count(old) != 1:
-                  raise SystemExit('::error::u4 patch: %s mein ye jagah nahi mili (%d baar): %s' % (fn, s.count(old), old.strip()[:60]))
-              return s.replace(old, new)
-
-          # ---------------------------------------------------------------- Extras.kt
-          s = read('Extras.kt')
-          if 'controlZone' not in s:
-              s = sub(s, '    var controlPanel by mutableStateOf(true)\n        private set\n',
-                  '''    var controlPanel by mutableStateOf(true)
-                  private set
-
-              /** 0 = sirf right half se neeche swipe, 1 = home pe kahin se bhi neeche swipe = control panel. */
-              var controlZone by mutableIntStateOf(1)
-                  private set
-
-              /** Top-right ke neeche chhota handle: tap ya neeche kheencho = control panel. */
-              var controlHandle by mutableStateOf(true)
-                  private set
-          ''', 'Extras.kt')
-              s = sub(s, '        controlPanel = p.getBoolean(KEY_CONTROL, true)\n',
-                  '''        controlPanel = p.getBoolean(KEY_CONTROL, true)
-                  controlZone = p.getInt(KEY_ZONE, 1).coerceIn(0, 1)
-                  controlHandle = p.getBoolean(KEY_HANDLE, true)
-          ''', 'Extras.kt')
-              s = sub(s, '    fun updateControlPanel(value: Boolean) {',
-                  '''    fun updateControlZone(value: Int) {
-                  controlZone = value.coerceIn(0, 1)
-                  prefs?.edit()?.putInt(KEY_ZONE, controlZone)?.apply()
-              }
-
-              fun updateControlHandle(value: Boolean) {
-                  controlHandle = value
-                  prefs?.edit()?.putBoolean(KEY_HANDLE, value)?.apply()
-              }
-
-              fun updateControlPanel(value: Boolean) {''', 'Extras.kt')
-              s = sub(s, '    private const val KEY_CONTROL = "control_panel"\n',
-                  '    private const val KEY_CONTROL = "control_panel"\n    private const val KEY_ZONE = "control_zone"\n    private const val KEY_HANDLE = "control_handle"\n', 'Extras.kt')
-              write('Extras.kt', s)
-
-          # ---------------------------------------------------------------- HomeScreen.kt
-          s = read('HomeScreen.kt')
-          if 'ControlHandle' not in s:
-              s = sub(s, 'if (Extras.controlPanel && startX > size.width * 0.5f) {',
-                  'if (Extras.controlPanel && (Extras.controlZone == 1 || startX > size.width * 0.5f)) {', 'HomeScreen.kt')
-              s = sub(s, '        HomeContent(state = state, onLaunch = onLaunch)\n',
-                  '''        HomeContent(state = state, onLaunch = onLaunch)
-
-                  // Chhota handle (top right ke neeche): tap ya neeche kheencho = control panel.
-                  if (Extras.controlPanel && Extras.controlHandle) {
-                      ControlHandle(Modifier.align(Alignment.TopEnd))
-                  }
-          ''', 'HomeScreen.kt')
-              write('HomeScreen.kt', s)
-
-          # ---------------------------------------------------------------- SettingsScreen.kt
-          s = read('SettingsScreen.kt')
-          if 'controlZone' not in s:
-              s = sub(s, '        ToggleRow("Control panel gesture", Extras.controlPanel) { Extras.updateControlPanel(it) }\n',
-                  '''        ToggleRow("Control panel gesture", Extras.controlPanel) { Extras.updateControlPanel(it) }
-                  Hint("Swipe area: Right half = only from the right side, Anywhere = swipe down from anywhere on the home screen (the notification shade is then reached from the status bar).")
-                  ChipRow(listOf("Right half", "Anywhere"), Extras.controlZone) { Extras.updateControlZone(it) }
-                  ToggleRow("Small handle (top right)", Extras.controlHandle) { Extras.updateControlHandle(it) }
-          ''', 'SettingsScreen.kt')
-              write('SettingsScreen.kt', s)
-
-          # ---------------------------------------------------------------- ControlPanel.kt
-          s = read('ControlPanel.kt')
-          if 'fun ControlHandle' not in s:
-              start = s.find('@Suppress("DEPRECATION")\nprivate fun ccWifi(context: Context) {')
-              end = s.find('private fun ccMobileData(context: Context) {')
-              if start < 0 or end < 0 or end < start:
-                  raise SystemExit('::error::u4 patch: ControlPanel.kt mein ccWifi nahi mila')
-              new_fns = '''/**
-           * Wi-Fi: pehle seedha on/off try karta hai. Android sirf purane targetSdk wali app ko ye karne deta hai;
-           * agar system mana kare (false) to Android 10+ ka Wi-Fi panel / settings khulta hai.
-           */
-          @Suppress("DEPRECATION")
-          private fun ccWifi(context: Context) {
-              val direct = try {
-                  val wm = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
-                  wm.setWifiEnabled(!wm.isWifiEnabled)
-              } catch (e: Exception) {
-                  false
-              }
-              if (direct) return
-              if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && ccLaunch(context, PANEL_WIFI)) return
-              ccOpenSettings(context, Settings.ACTION_WIFI_SETTINGS)
-          }
-
-          /** Bluetooth: seedha enable/disable try; system mana kare to Bluetooth settings. */
-          @Suppress("DEPRECATION", "MissingPermission")
-          private fun ccBluetooth(context: Context) {
-              val done = try {
-                  val adapter = (context.applicationContext.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager).adapter
-                  if (adapter == null) {
-                      false
-                  } else if (adapter.isEnabled) {
-                      adapter.disable()
-                  } else {
-                      adapter.enable()
-                  }
-              } catch (e: Exception) {
-                  false
-              }
-              if (!done) ccOpenSettings(context, Settings.ACTION_BLUETOOTH_SETTINGS)
-          }
-
-          '''
-              s = s[:start] + new_fns + s[end:]
-              s = sub(s, '''                        modifier = Modifier.fillMaxWidth().weight(1f),
-                                  onClick = { ccOpenSettings(context, Settings.ACTION_BLUETOOTH_SETTINGS) }''',
-                  '''                        modifier = Modifier.fillMaxWidth().weight(1f),
-                                  onLongClick = { ccOpenSettings(context, Settings.ACTION_BLUETOOTH_SETTINGS) },
-                                  onClick = { ccBluetooth(context) }''', 'ControlPanel.kt')
-              s = s.rstrip('\n') + '''
-
-          // ---------------------------------------------------------------- handle (home ke top-right ke neeche)
-
-          /** Chhota handle: tap ya neeche kheencho = control panel. */
-          @Composable
-          fun ControlHandle(modifier: Modifier = Modifier) {
-              Box(
-                  modifier = modifier
-                      .statusBarsPadding()
-                      .padding(top = 2.dp, end = 6.dp)
-                      .size(width = 76.dp, height = 40.dp)
-                      .pointerInput(Unit) {
-                          detectTapGestures(onTap = { ControlCenter.show() })
-                      }
-                      .pointerInput(Unit) {
-                          var total = 0f
-                          val threshold = 24.dp.toPx()
-                          detectVerticalDragGestures(
-                              onDragStart = { total = 0f },
-                              onDragEnd = { if (total > threshold) ControlCenter.show() },
-                              onVerticalDrag = { _, dy -> total += dy }
-                          )
-                      },
-                  contentAlignment = Alignment.Center
-              ) {
-                  Box(
-                      Modifier
-                          .size(width = 36.dp, height = 5.dp)
-                          .clip(CcPill)
-                          .background(Color.White.copy(alpha = 0.35f))
-                  )
-              }
-          }
-          '''
-              write('ControlPanel.kt', s)
-
-          # ---------------------------------------------------------------- manifest + gradle
-          m = 'app/src/main/AndroidManifest.xml'
-          t = open(m, encoding='utf-8').read()
-          t = t.replace('<uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />',
-                        '<uses-permission android:name="android.permission.BLUETOOTH" />')
-          if 'BLUETOOTH_ADMIN' not in t:
-              anchor = '    <uses-permission android:name="android.permission.BLUETOOTH" />\n'
-              if anchor in t:
-                  t = t.replace(anchor, anchor + '    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />\n', 1)
-              else:
-                  raise SystemExit('::error::u4 patch: manifest mein BLUETOOTH line nahi mili')
-          open(m, 'w', encoding='utf-8').write(t)
-
-          g = 'app/build.gradle.kts'
-          t = open(g, encoding='utf-8').read()
-          t = re.sub(r'targetSdk = \d+', 'targetSdk = 28', t, count=1)
-          open(g, 'w', encoding='utf-8').write(t)
-          print('u4 patch OK')
-          PY
-
-      - name: Apply update u5 (top-edge swipe, tile toggles via Accessibility)
-        run: |
-          ok=1
-          while read -r f want; do
-            if [ ! -f "$f" ]; then
-              echo "::error::$f nahi mila. Isi naam se file banao (repo ke root mein, u2.txt ke saath) aur uska content paste karo."
-              ok=0
-              continue
-            fi
-            got=$(tr -d '[:space:]' < "$f" | sha256sum | cut -d' ' -f1)
-            if [ "$got" != "$want" ]; then
-              echo "::error::$f adhoori ya galat paste hui hai. Sirf is file ko dobara copy karke paste karo."
-              ok=0
-            fi
-          done <<'LIST'
-          u5a.txt 62fc55649830d76a4051c03478f39e404eec99b8e154d79a115a17ce673e3cfb
-          u5b.txt 57246bfa1c0a6e3726fa2517991c4b1e8633ab4103a2debfb43b19432f71010a
-          LIST
-          [ "$ok" = 1 ] || exit 1
-          cat u5?.txt | tr -d '[:space:]' | base64 -d | tar xJ
-          test -f patch_u5.py
-          python3 patch_u5.py
-          sed -i 's/versionCode = 4/versionCode = 5/; s/versionName = "1.4"/versionName = "1.5"/' app/build.gradle.kts
+          cat c1.txt c2.txt | tr -d '[:space:]' | base64 -d | tar xJ
+          bash ci.sh
 
       - uses: actions/setup-java@v4
         with:
@@ -394,7 +81,7 @@ jobs:
       - name: Publish APK to Releases
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.5-${{ github.run_number }}
-          name: Mist Launcher v1.5 (build ${{ github.run_number }})
+          tag_name: v${{ env.APP_VERSION }}-${{ github.run_number }}
+          name: Mist Launcher v${{ env.APP_VERSION }} (build ${{ github.run_number }})
           files: MistLauncher.apk
           
